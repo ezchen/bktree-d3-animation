@@ -11,6 +11,12 @@
    stroke-width: 3px;
  }
 
+ .node.colored circle {
+   fill: #fff;
+   stroke: red;
+   stroke-width: 3px;
+ }
+
  .node text { font: 12px sans-serif; }
 
  .link {
@@ -18,8 +24,35 @@
    stroke: #ccc;
    stroke-width: 2px;
  }
+
+ #description {
+   position: absolute;
+   top: 10px;
+   left: 10px;
+   font-size: 16px;
+ }
+
+ svg {
+   background-color: #f7f8fc;
+ }
 </style>
 </head>
 <body>
+  <div id="demo-container">
+  </div>
+  <div id="controls">
+    <input id="insert-input" type="text" name="word">
+    <button id="insert-button" type="button">Insert</button>
+
+    <input id="search-input" type="text" name="search">
+    <button id="search-button" type="button">Search</button>
+  </div>
+  <div id="description">
+    <span id="animation-description">
+    </span>
+  </div>
+  <div id="words">
+    <span id="wordlist"></span>
+  </div>
 </body>
 </html>

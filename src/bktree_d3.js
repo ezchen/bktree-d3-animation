@@ -5,7 +5,7 @@ var word_length = 20;
 var tol = 2;
 var width = 960;
 var height = 500;
-var sfid = 1000;
+var timeout = 1500;
 
 /**
  * Implementation of BKTree, with animation and drawing in D3
@@ -19,26 +19,39 @@ class BKTreeD3 {
     this.nodes = this.tree(this.root);
     this.diagonal = d3.svg.diagonal();
     this.duration = 500;
+    this.numNodes = 0;
 
-    this.root.x = 0;
-    this.root.y = 0;
-    this.root.word = "";
-    this.root.distance = -1;
-    this.root._bkchildren = new Array(word_length);
-    this.root._bkchildren.fill(null);
-    this.root.parent = this.root;
-    this.root.px = this.root.x;
-    this.root.py = this.root.y;
-
-    this.svg = d3.select("body").append("svg")
+    this.svg = d3.select("#demo-container").append("svg")
       .attr("width", width)
       .attr("height", height)
       .append("g")
       .attr("transform", "translate(10, 10)");
 
+    this.animationListeners = [];
+    this.wordListListeners = [];
+
     this.node = this.svg.selectAll(".node");
     this.link = this.svg.selectAll(".link");
 
+  }
+
+  /**
+   * Initializes the root in this tree
+   *
+   * Important when adding a word for the first time
+   */
+  _createRoot(word) {
+    this.root.x = 0;
+    this.root.y = 0;
+    this.root.word = word;
+    this.root.distance = -1;
+    this.root._bkchildren = new Array(word_length);
+    this.root._bkchildren.fill(null);
+    this.root.id = "node" + this.numNodes;
+    this.root.parent = this.root;
+    this.root.px = this.root.x;
+    this.root.py = this.root.y;
+    this.numNodes++;
     this.update();
   }
 
@@ -56,9 +69,14 @@ class BKTreeD3 {
 
     // Add entering nodes in the parent’s old position.
     var nodeEnter = that.node.enter().append("g")
-        .attr("class", "node")
         .attr("transform", function(d) {
           return "translate(" + d.parent.px + "," + d.parent.py +")";
+        })
+        .attr("class", function(d) {
+          return "node";
+        })
+        .attr("id", function(d) {
+          return d.id;
         });
 
     nodeEnter.append("circle")
@@ -70,7 +88,7 @@ class BKTreeD3 {
        .attr("dy", ".35em")
        .attr("text-anchor", function(d) {
 	return d.children || d._children ? "end" : "start"; })
-       .text(function(d) { return d.word; })
+       .text(function(d) { return d.word + " " + d.distance; })
        .style("fill-opacity", 1);
 
     // Add entering links in the parent’s old position.
@@ -103,7 +121,7 @@ class BKTreeD3 {
     // look through _bkchildren
     // node at distance dist doesn't exist. So append here
     if (node._bkchildren[dist] == null) {
-      var newNode = {id: this.nodes.length, "word": word, "distance": dist};
+      var newNode = {id: this.nodes.length, "word": word, "distance": dist, "found": false};
       newNode._bkchildren = (new Array(word_length)).fill(null);
       if (node.children) {
         // TODO: put in right index of array
@@ -115,6 +133,7 @@ class BKTreeD3 {
 
       // add to all nodes
       this.nodes.push(newNode);
+      this.numNodes++;
       this.update();
     }
 
@@ -127,7 +146,73 @@ class BKTreeD3 {
   }
 
   add(word) {
-    this.addWord(this.root, word);
+    // If root is an empty node, just make new word the root
+    if (this.root.word == undefined) {
+      this._createRoot(word);
+      this.numNodes++;
+    } else {
+      this.addWord(this.root, word);
+    }
+  }
+
+  addWithAnimationsHelper(node, word) {
+    let dist = Utility.editDistance(word, node.word);
+    let distString = "editDistance of " + "<b>" + word +
+                    "</b> and " + "<b>" + node.word +
+                    "</b> is " + "<b>" + dist + "</b>";
+    this.colorNode(node);
+    this.enlargeNode(node);
+    this.notifyListeners(distString);
+
+    var that = this;
+    setTimeout(function () {
+      if (node._bkchildren[dist] == null) {
+        let insString = "Child at distance <b>" + dist + "</b> does not exist. Append here";
+        that.notifyListeners(insString);
+
+        var newNode = {id: that.nodes.length, "word": word, "distance": dist, "found": false};
+        newNode._bkchildren = (new Array(word_length)).fill(null);
+        if (node.children) {
+          node.children.push(newNode);
+        } else {
+          node.children = [newNode];
+        }
+        node._bkchildren[dist] = newNode;
+
+        // add to all nodes
+        that.nodes.push(newNode);
+        that.numNodes++;
+        that.update();
+
+        setTimeout(function() {
+          that.resetColors();
+          that.resetEnlarged();
+        }, timeout);
+      } else {
+        let insString = "Child at distance <b>" + dist + "</b> exists. Recurse"
+        that.notifyListeners(insString);
+
+        setTimeout(function() {
+          that.addWithAnimationsHelper(node._bkchildren[dist], word);
+        }, timeout);
+      }
+    }, timeout);
+  }
+
+  addWithAnimations(word) {
+    if (this.root.word == undefined) {
+      this.add(word);
+    } else {
+      this.addWithAnimationsHelper(this.root, word);
+    }
+  }
+
+  notifyListeners(s) {
+    for (var i = 0; i < this.animationListeners.length; i++) {
+      if (typeof this.animationListeners[i].descriptionUpdate === 'function') {
+        this.animationListeners[i].descriptionUpdate(s);
+      }
+    }
   }
 
   get_similar_words(word) {
@@ -145,6 +230,7 @@ class BKTreeD3 {
 
     if (dist <= tol) {
       similar_words.push(node);
+      this.colorNode(node);
     }
 
     if (node.children == undefined) {
@@ -170,6 +256,50 @@ class BKTreeD3 {
     }
 
     return similar_words;
+  }
+
+  getSimilarWordsWithAnimations(node, word) {
+    let similar_words = [];
+
+    if (node == null) {
+      return similar_words;
+    }
+
+    let dist = Utility.editDistance(node.word, word);
+  }
+
+  colorNode(node) {
+    let nodeId = node.id;
+    let el = document.getElementById(nodeId);
+    el.classList.add("colored");
+  }
+
+  resetColors() {
+    let colored = document.getElementsByClassName("colored");
+
+    while (colored.length > 0) {
+      colored[0].classList.remove("colored");
+    }
+  }
+
+  resetEnlarged() {
+    let enlarged = document.getElementsByClassName("enlarged");
+
+    while (enlarged.length > 0) {
+      enlarged[0].setAttribute("r", "4");
+      enlarged[0].classList.remove("enlarged");
+    }
+  }
+
+  enlargeNode(node) {
+    let nodeId = node.id;
+    let el = document.getElementById(nodeId);
+    let circleArr = el.getElementsByTagName("circle");
+    if (circleArr != null && circleArr.length > 0) {
+      let circle = circleArr[0];
+      circle.setAttribute("r", "8");
+      circle.classList.add("enlarged");
+    }
   }
 
   linkId(d) {
